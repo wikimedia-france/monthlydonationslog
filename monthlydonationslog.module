@@ -1,0 +1,316 @@
+<?php
+/**
+* Implementation of hook_permission().
+*/
+function monthlydonationslog_permission() {
+  return array(
+    'access monthlydonationslog' => array('title' => t('Access Monthly Donations Log'))
+  );
+}
+
+/**
+ 
+* Implementation of hook_menu().
+*/
+function monthlydonationslog_menu() {
+  $items = array();
+
+  $items['journal'] = array(
+    'title' => 'Journal des donateurs',
+    'page callback' => 'display_donations_log',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+ 
+  $items['journal/%'] = array(
+    'title' => 'Journal des donateurs',
+    'page arguments' => array(1),
+    'page callback' => 'display_donations_log',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+ 
+  return $items;
+}
+
+function french_month($month_number,$capitalize=0) {
+  $month_name=array(
+    "01"=>"janvier",
+    "02"=>"février",
+    "03"=>"mars",
+    "04"=>"avril",
+    "05"=>"mai",
+    "06"=>"juin",
+    "07"=>"juillet",
+    "08"=>"août",
+    "09"=>"septembre",
+    "10"=>"octobre",
+    "11"=>"novembre",
+    "12"=>"décembre"
+  );
+  $the_month=$month_name[$month_number];
+
+  if($capitalize==1){$the_month=ucfirst($the_month);}
+
+  return $the_month;
+}
+
+function generate_daily_total_line($display_date,$daily_donations_count,$daily_total) {
+  $daily_total_line="<tr><td colspan='4'><em>";
+  if($daily_total == 0) {
+    $daily_total_line.="Aucun don n’a été reçu.";
+  } else {
+    $daily_total_line.="Total des dons pour le ".$display_date." : ".number_format($daily_donations_count,0,',',' ')." don";
+    if($daily_donations_count>1) {$daily_total_line.="s pour un total";}
+    $daily_total_line.=" de ".number_format($daily_total,0,',',' ')." €.";
+  }
+  $daily_total_line.="</em></td></tr>";
+
+  return $daily_total_line;
+}
+
+function display_navlinks($selected_year,$selected_month) {
+  global $base_url;
+  
+  $path_expl=explode('/',current_path());
+
+  $last_year=$selected_year;
+  $last_month=sprintf("%02d", ($selected_month-1));
+  if ($last_month == '00') {
+    $last_month='12';
+    $last_year=$last_year-1;
+  }
+
+  $next_year=$selected_year;
+  $next_month=sprintf("%02d", ($selected_month+1));
+  if ($next_month == '13') {
+    $next_month='01';
+    $next_year=$next_year+1;
+  }
+
+  $navlinks='<p id="navlinks">';
+
+  if(new DateTime($last_year.'-'.$last_month.'-01') >= new DateTime('2009-01-01')) {
+    $navlinks.='<a href="'.$base_url.'/'.$path_expl[0].'/'.$last_year.'-'.$last_month.'">&lt; '.french_month($last_month,1).' '.$last_year.'</a>';
+  } else { $navlinks.= '<em>(Début)</em>'; }
+  $navlinks.=' | '.french_month($selected_month,1).' '.$selected_year.' | ';
+  if(new DateTime($next_year.'-'.$next_month.'-31') < new DateTime()) { 
+    $navlinks.='<a href="'.$base_url.'/'.$path_expl[0].'/'.$next_year.'-'.$next_month.'">'.french_month($next_month,1).' '.$next_year.' &gt;</a>';
+  } else { $navlinks.= '<em>(Fin)</em>'; }
+
+  $navlinks.='</p>';
+  return $navlinks;
+}
+
+function display_selector($selected_year,$selected_month) {
+  $current_year=date("Y");
+  $current_month=date("m");
+
+  $selector =	'<form method="get" action="">';
+  $selector.=	'<label for="date-selector">Choisissez une date</label><select id="date-selector" name="date-selector">'."\n";
+
+  for($i= $current_year;$i>=2009; $i--) {
+    if ($i== $current_year) {
+      $last_month=$current_month;
+    } else {
+      $last_month=12;
+    }
+
+
+    for($j=$last_month;$j>=1;$j--) {
+      $month_number=sprintf("%02d", $j);
+
+
+      $the_value=$i.'-'.$month_number;
+      $selected_value=$selected_year.'-'.$selected_month;
+      if($selected_value==$the_value){
+        $selected='selected="selected"';
+      } else {
+        $selected='';
+      }
+
+      $selector.='<option value="'.$the_value.'"'.$selected.'>'.french_month($month_number,1).' '.$i."</option>\n";
+    }
+
+  }
+
+  $selector.="</select>\n";
+  $selector.="<input type=\"submit\" value=\"Consulter\">\n";
+  $selector.="</form>\n";
+  return $selector;
+}
+
+function display_donations_log($date=false) {
+  $time_start = microtime(true);
+
+  if((!empty($_GET))&&(!empty($_GET["date-selector"]))) {
+    $path_expl=explode('/',current_path());
+    $date=$_GET["date-selector"];
+    header( 'Location: '.$base_url.'/'.$path_expl[0].'/'.$_GET["date-selector"]); 
+  }
+  $error=0;
+  $daily_log=0;
+  $day="01"; //Init day parameter for date checks even on monthly logs.
+
+  if(!$date) {
+    $year=date("Y");
+    $month=date("m");
+  } else {
+    $date_expl=explode('-',$date);
+
+    if (count($date_expl)==3) {
+      $year=$date_expl[0];
+      $month=$date_expl[1];
+      $day=$date_expl[2];
+      $daily_log=1;
+    } else if(count($date_expl)<>2){$error=1;}
+    else {
+      $year=$date_expl[0];
+      $month=$date_expl[1];
+    }
+  }
+
+  if(!checkdate($month,$day,$year)){$error=1;}
+
+  $return_page=display_selector($year,$month);
+  
+  if($error==0) {
+    if ($daily_log == 0) {
+      $return_page.=monthly_log($year,$month);
+    } else {
+      $return_page.=monthly_log($year,$month,$day);
+    }
+  } else {
+    $return_page.="<p class=\"warning\">Impossible d'afficher le journal : paramètres incorrects.</p>";
+  }
+
+  $time_end = microtime(true);
+  $time = $time_end - $time_start;
+  $return_page.='<p class="time">Page générée en '.number_format($time,2,",","").' secondes.</p>';
+   
+  return $return_page;
+}
+
+function monthly_log($year,$month,$day=0) {
+  global $base_url;
+
+  $display_day=ltrim($day,'0');
+  if($display_day==1) { $display_day.='<sup>er</sup>';}
+
+  $str_return="<p>Voici un aperçu des dons effectués ";
+ 
+  if($day==0) {
+    $str_return.="en";
+  } else {
+    $str_return.="le ".$display_day;
+  }
+
+  $str_return.=" ".french_month($month)." ".$year." à notre association via notre interface de dons en ligne.</p>
+<p><a href=\"$base_url/civicrm/contribute/transact?reset=1&id=2\" title=\"Soutenez-nous\">Vous aussi, effectuez un don à Wikimédia France pour rejoindre cette liste !</a></p>
+<p>Les données de cet aperçu sont présentées automatiquement sans garantie d'exactitude et d'exhaustivité.</p>";
+	
+  $query = db_select('civicrm_contribution', 'c');
+  $query->join('civicrm_contact', 'u', 'c.contact_id = u.id');
+  $query->join('civicrm_value_wikimedia_donations_1', 'v', 'c.id = v.entity_id');
+ 
+  $query
+    ->condition('c.id', 0, '<>')
+    ->fields('c',array('financial_type_id', 'total_amount','receive_date'))
+    ->fields('u',array('display_name'))
+    ->fields('v',array('journal_2','nom_dans_journal__3 '))
+    ->condition('financial_type_id', array(1,3), 'IN')
+    ->condition('contribution_status_id', '1');
+
+  if ($day==0) {
+    $query
+      ->condition('receive_date', $year.'-'.$month.'-01','>=')
+      ->condition('receive_date', $year.'-'.$month.'-32','<');
+  } else {
+    $query->condition('receive_date', $year.'-'.$month.'-'.$day.'%','LIKE');
+  }
+  $query->orderBy('c.receive_date', 'DESC');
+ 
+  $result = $query->execute();
+
+
+  $table_return="<table id=\"donations_log\">\n";
+  $monthly_total=0;
+  $donations_count=0;
+  $registered_day='0';
+  $daily_total=0;
+  $daily_donations_count=0;
+  $the_day_table_return='';
+
+
+  foreach ($result as $record) {
+    //Check if the donator wants his name to be displayed
+    if($record->nom_dans_journal__3){
+      $donator_name=$record->display_name;
+    } else {
+      $donator_name="Anonyme";
+    }
+
+    $amount=intval($record->total_amount);
+
+
+    $date_expl=explode('-',$record->receive_date);
+    $date_expl2=explode(' ',$date_expl[2]);
+    $the_day=$date_expl2[0];
+    $the_time=$date_expl2[1];
+
+    if($registered_day==0){
+      $registered_day=$the_day;
+    }
+
+    $display_day=ltrim($registered_day,'0');
+    if($display_day==1) { $display_day.='<sup>er</sup>';}
+    $display_date=$display_day." ".french_month($month);
+
+
+    if($the_day<>$registered_day) {
+      $daily_total_line= generate_daily_total_line($display_date,$daily_donations_count,$daily_total);
+      
+      $table_return.="<tr><th>".$display_date."</th><th>Nom du donateur</th><th class=\"amount_row\">Montant</th><th class=\"comment_row\">Commentaire</th></tr>";
+      $table_return.=$daily_total_line;
+      $table_return.=$the_day_table_return;
+      $table_return.=$daily_total_line;
+
+      $the_day_table_return='';
+
+      $registered_day=$the_day;
+      $daily_total=0;
+      $daily_donations_count=0;
+    } 
+
+    $monthly_total+=$amount;
+    $daily_total+=$amount;
+
+    $donations_count++;
+    $daily_donations_count++;
+    
+    if (($day != 0) OR ($daily_donations_count <= 20 )) {
+      $the_day_table_return.="<tr><td>".$the_time."</td><td>".$donator_name."</td><td class=\"amount_row\">".number_format($amount,0,',',' ')." €</td><td class=\"comment_row\">".$record->journal_2."</td></tr>\n";
+    } else if ($daily_donations_count == 21) {
+      $the_day_table_return.='<tr><td colspan=4><em><a href="'.$base_url.'/journal/'.$year.'-'.$month.'-'.$registered_day.'" title="Journal du '.$display_date.'">Voir le journal complet pour le '.$display_date.'.</a></em></td></tr>';
+    }
+  }
+  $registered_day=$the_day;
+  $daily_total_line= generate_daily_total_line($display_date,$daily_donations_count,$daily_total);
+
+  $table_return.="<tr><th>".$display_date."</th><th>Nom du donateur</th><th>Montant</th><th>Commentaire</th></tr>";
+        if ($daily_donations_count >= 5) { $table_return.=$daily_total_line; }
+        $table_return.=$the_day_table_return;
+        $table_return.=$daily_total_line;
+  $table_return.="</table>\n";
+
+  if($day==0) { $str_return.="<p>En ".french_month($month)." ". $year.", nous avons enregistré <strong>".number_format($donations_count,0,',',' ')." dons en ligne</strong> pour un total de <strong>".number_format($monthly_total,0,',',' ')." euros</strong>.\n"; }
+
+  $str_return.=$table_return;
+
+  $str_return.=display_navlinks($year,$month);
+
+  $str_return.="<p><strong>Toute reproduction, partielle ou totale, sur quelque support que ce soit, de ce journal est strictement interdite sans l'accord de nos donateurs
+(lire <a href=\"/confidentialite\" title=\"Politique de Confidentialité de Wikimédia France\">notre politique de confidentialité</a>).</strong></p>";
+
+  return $str_return;
+}
