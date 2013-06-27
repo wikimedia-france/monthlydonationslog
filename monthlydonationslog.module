@@ -141,6 +141,7 @@ function display_selector($selected_year,$selected_month) {
 }
 
 function display_donations_log($date=false) {
+  global $base_url;
   $time_start = microtime(true);
 
   if((!empty($_GET))&&(!empty($_GET["date-selector"]))) {
