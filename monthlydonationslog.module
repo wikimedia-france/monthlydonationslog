@@ -212,14 +212,14 @@ function monthly_log($year,$month,$day=0) {
 	
   $query = db_select('civicrm_contribution', 'c');
   $query->join('civicrm_contact', 'u', 'c.contact_id = u.id');
-  $query->join('civicrm_value_wikimedia_donations_1', 'v', 'c.id = v.entity_id');
+  $query->leftJoin('civicrm_value_wikimedia_donations_1', 'v', 'c.id = v.entity_id');
  
   $query
     ->condition('c.id', 0, '<>')
     ->fields('c',array('financial_type_id', 'total_amount','receive_date'))
     ->fields('u',array('display_name'))
     ->fields('v',array('journal_2','nom_dans_journal__3 '))
-    ->condition('financial_type_id', array(1,3), 'IN')
+    ->condition('financial_type_id', array(1,3), 'IN') /* 1 : Don, 3 : contribution campagne*/
     ->condition('contribution_status_id', '1');
 
   if ($day==0) {
